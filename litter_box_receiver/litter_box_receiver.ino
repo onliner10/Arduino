@@ -18,7 +18,7 @@ void blink_init() {
 // Must match the receiver structure
 typedef struct struct_message {
   unsigned int usages;
-  unsigned int last_open;
+  unsigned long last_open;
 } struct_message;
 
 // Create a struct_message called myData

@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include "driver/rtc_io.h"
 
+
 #define uS_TO_S_FACTOR 1000000ULL /* Conversion factor for micro seconds to seconds */
 #define MAX_RETRY_TIME 1024          /* Time ESP32 will go to sleep (in seconds) */
 #define INITIAL_RETRY  16
@@ -16,7 +17,7 @@ uint8_t broadcastAddress[] = {0x84, 0xFC, 0xE6, 0xC5, 0x33, 0x7A};
 
 typedef struct struct_message {
   unsigned int usages;
-  unsigned int last_open;
+  unsigned long last_open;
 } struct_message;
 // Create a struct_message called myData
 struct_message payload;
@@ -86,7 +87,7 @@ void handler(){
     case ESP_SLEEP_WAKEUP_TIMER : handle_timer(); break;
     case ESP_SLEEP_WAKEUP_TOUCHPAD : critical_error("Did not expect TOUCHPAD wake up!"); break;
     case ESP_SLEEP_WAKEUP_ULP : critical_error("Did not expect ULP wake up!"); break;
-    default : Serial.printf("Wakeup was not caused by deep sleep: %d, doing nothing\n",wakeup_reason); break;
+    default : initialize_time(); break;
   }
 }
 
@@ -100,12 +101,15 @@ void handle_input() {
 
   payload.usages = preferences.getUInt("usages", 0);
   payload.usages++;
+  payload.last_open = getTime();
+  preferences.putULong("last_open", payload.last_open);
   preferences.putUInt("usages", payload.usages);
   send_data();
 }
 
 void send_data() {
   payload.usages = preferences.getUInt("usages", 0);
+  payload.last_open = preferences.getULong("last_open", 0);
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &payload, sizeof(payload));
    
   if (result == ESP_OK) {
