@@ -6,7 +6,7 @@ void initComm() {
 void sendComm(unsigned int usages, unsigned long last_used) {
   Serial.print("Usages: ");
   Serial.print(usages);
-  Serial.print(", Last used: ");
+  Serial.print(", Last open: ");
   Serial.println(last_used);
 }
 

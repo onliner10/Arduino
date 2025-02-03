@@ -15,6 +15,7 @@ unsigned int usages = 0;
 unsigned long last_open = 0;
 
 void setup() {
+  setCpuFrequencyMhz(80);
   pinMode(CONTACTRON, INPUT_PULLDOWN);
   pinMode(TILT_SENSOR, INPUT_PULLDOWN);
   attach_interrupts();
@@ -92,9 +93,6 @@ void attach_interrupts() {
 void handle_input() {
   auto debounce = 1;
   Serial.println("INPUT HANDLER");
-
-  // just to eliminate "wobbles"
-  delay(1000);
 
   usages = preferences.getUInt("usages", 0);
   if(usages != 0 && digitalRead(CONTACTRON) == 0) {
