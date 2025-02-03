@@ -7,6 +7,8 @@
 #define uS_TO_S_FACTOR 1000000ULL /* Conversion factor for micro seconds to seconds */
 #define MAX_RETRY_TIME 1024          /* Time ESP32 will go to sleep (in seconds) */
 #define INITIAL_RETRY  16
+#define CONTACTRON GPIO_NUM_1
+#define TILT_SENSOR GPIO_NUM_2
 
 unsigned int retryTime = 2;
 
@@ -26,10 +28,10 @@ esp_now_peer_info_t peerInfo;
 
 
 void setup() {
-  pinMode(GPIO_NUM_0, INPUT_PULLUP);
-  rtc_gpio_pullup_en(GPIO_NUM_0);
-  rtc_gpio_pulldown_dis(GPIO_NUM_0);
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_0,0);
+  pinMode(CONTACTRON, INPUT_PULLUP);
+  rtc_gpio_pullup_en(CONTACTRON);
+  rtc_gpio_pulldown_dis(CONTACTRON);
+  esp_sleep_enable_ext0_wakeup(CONTACTRON,0);
 
   pinMode(LED_BUILTIN, OUTPUT);
   preferences.begin("sender", false);
