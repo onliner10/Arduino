@@ -93,6 +93,7 @@ void attach_interrupts() {
 void handle_input() {
   auto debounce = 1;
   Serial.println("INPUT HANDLER");
+  gpio_wait();
 
   usages = preferences.getUInt("usages", 0);
   if(usages != 0 && digitalRead(CONTACTRON) == 0) {
@@ -120,6 +121,18 @@ void send_data() {
   sendComm(usages, last_open);
    
   blink_sent();
+}
+
+// waits for either contactron or tilt sensor to have state zero
+void gpio_wait() {
+  unsigned long startTime = millis();  
+
+  while (millis() - startTime < 2000) {
+    if (digitalRead(CONTACTRON) == 0 || digitalRead(TILT_SENSOR) == 0) {
+      break;  
+    }
+  }
+
 }
 
 void loop() {
