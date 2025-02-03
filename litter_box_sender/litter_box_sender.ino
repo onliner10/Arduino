@@ -5,33 +5,19 @@
 
 
 #define uS_TO_S_FACTOR 1000000ULL /* Conversion factor for micro seconds to seconds */
-#define MAX_RETRY_TIME 1024          /* Time ESP32 will go to sleep (in seconds) */
-#define INITIAL_RETRY  16
 #define CONTACTRON GPIO_NUM_1
 #define TILT_SENSOR GPIO_NUM_2
-
-unsigned int retryTime = 2;
+#define DEBOUNCE_OPEN_SECONDS 5
+#define DEBOUNCE_ROTATE_SECONDS 5
 
 Preferences preferences;
-
-
-uint8_t broadcastAddress[] = {0x84, 0xFC, 0xE6, 0xC5, 0x33, 0x7A};
-
-typedef struct struct_message {
-  unsigned int usages;
-  unsigned long last_open;
-} struct_message;
-// Create a struct_message called myData
-struct_message payload;
-
-esp_now_peer_info_t peerInfo;
-
+unsigned int usages = 0;
+unsigned long last_open = 0;
 
 void setup() {
-  pinMode(CONTACTRON, INPUT_PULLUP);
-  rtc_gpio_pullup_en(CONTACTRON);
-  rtc_gpio_pulldown_dis(CONTACTRON);
-  esp_sleep_enable_ext0_wakeup(CONTACTRON,0);
+  pinMode(CONTACTRON, INPUT_PULLDOWN);
+  pinMode(TILT_SENSOR, INPUT_PULLDOWN);
+  attach_interrupts();
 
   pinMode(LED_BUILTIN, OUTPUT);
   preferences.begin("sender", false);
@@ -41,33 +27,11 @@ void setup() {
   blink_init();
   Serial.println("Starting sensor...");
   digitalWrite(LED_BUILTIN, 1);
+  debug_gpio();
  
-  // Set device as a Wi-Fi Station
-  WiFi.mode(WIFI_STA);
-
-  // Init ESP-NOW
-  if (esp_now_init() != ESP_OK) {
-    critical_error("Error initializing ESP-NOW");
-    return;
-  }
-  
-  esp_now_register_send_cb(OnDataSent);
-
-  // Register peer
-  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 0;  
-  peerInfo.encrypt = false;
-  
-  // Add peer        
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    critical_error("Failed to add peer");
-    return;
-  }
-
-  payload.usages = 0;
-  payload.last_open = 0;
-
+  initComm();
   handler();
+  endComm();
 
   Serial.println("Going to sleep now");
   digitalWrite(LED_BUILTIN, 0);
@@ -77,6 +41,17 @@ void setup() {
   esp_deep_sleep_start();
 }
 
+void debug_gpio() {
+  int state;
+  state = digitalRead(CONTACTRON);
+  Serial.print("Contractron: ");
+  Serial.print(state);
+  Serial.print(", ");
+  state = digitalRead(TILT_SENSOR);
+  Serial.print("Tilt: ");
+  Serial.println(state);
+}
+
 void handler(){
   esp_sleep_wakeup_cause_t wakeup_reason;
 
@@ -84,8 +59,8 @@ void handler(){
 
   switch(wakeup_reason)
   {
-    case ESP_SLEEP_WAKEUP_EXT0 : handle_input(); break;
-    case ESP_SLEEP_WAKEUP_EXT1 : critical_error("Did not expect EXT1 wake up!"); break;
+    case ESP_SLEEP_WAKEUP_EXT0 : critical_error("Did not expect EXT0 wake up!"); break;
+    case ESP_SLEEP_WAKEUP_EXT1 : handle_input(); break;
     case ESP_SLEEP_WAKEUP_TIMER : handle_timer(); break;
     case ESP_SLEEP_WAKEUP_TOUCHPAD : critical_error("Did not expect TOUCHPAD wake up!"); break;
     case ESP_SLEEP_WAKEUP_ULP : critical_error("Did not expect ULP wake up!"); break;
@@ -93,54 +68,61 @@ void handler(){
   }
 }
 
+// Attach interrupts back after debounce period
 void handle_timer() {
-  Serial.println("Retrying to send the data");
-  send_data();
+  Serial.println("TIMER HANDLER");
+  attach_interrupts();
+
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+  Serial.flush();
+  esp_deep_sleep_start();
+}
+
+void attach_interrupts() {
+  rtc_gpio_pullup_dis(CONTACTRON);
+  rtc_gpio_pulldown_en(CONTACTRON);
+  rtc_gpio_pullup_dis(TILT_SENSOR);
+  rtc_gpio_pulldown_en(TILT_SENSOR);
+
+  const uint64_t wakeup_pins = (1ULL << CONTACTRON) | (1ULL << TILT_SENSOR);
+
+  esp_sleep_enable_ext1_wakeup(wakeup_pins, ESP_EXT1_WAKEUP_ANY_LOW);
 }
 
 void handle_input() {
-  Serial.println("Input handler");
+  auto debounce = 1;
+  Serial.println("INPUT HANDLER");
 
-  payload.usages = preferences.getUInt("usages", 0);
-  payload.usages++;
-  payload.last_open = getTime();
-  preferences.putULong("last_open", payload.last_open);
-  preferences.putUInt("usages", payload.usages);
+  // just to eliminate "wobbles"
+  delay(1000);
+
+  usages = preferences.getUInt("usages", 0);
+  if(usages != 0 && digitalRead(CONTACTRON) == 0) {
+    debounce = DEBOUNCE_OPEN_SECONDS;
+    last_open = getTime();
+    preferences.putULong("last_open", last_open);
+    usages = 0;
+  } else if(digitalRead(TILT_SENSOR) == 0) {
+    debounce = DEBOUNCE_ROTATE_SECONDS;
+    usages += 1;
+  }
+
+  preferences.putUInt("usages", usages);
+
   send_data();
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT1);
+
+  // 5 minute debounce
+  esp_sleep_enable_timer_wakeup(debounce * uS_TO_S_FACTOR);
 }
 
 void send_data() {
-  payload.usages = preferences.getUInt("usages", 0);
-  payload.last_open = preferences.getULong("last_open", 0);
-  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &payload, sizeof(payload));
+  usages = preferences.getUInt("usages", 0);
+  last_open = preferences.getULong("last_open", 0);
+  sendComm(usages, last_open);
    
-  if (result == ESP_OK) {
-    retryTime = INITIAL_RETRY;
-    blink_sent();
-  }
-  else {
-    error("Error sending the data, will retry");
-    // retry in 30s
-    Serial.flush();
-    scheduleRetry();
-  }
+  blink_sent();
 }
 
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  if(status != ESP_NOW_SEND_SUCCESS) {
-    scheduleRetry();
-    Serial.flush();
-    esp_deep_sleep_start();
-  }
-}
-
-void scheduleRetry() {
-  esp_sleep_enable_timer_wakeup(retryTime * uS_TO_S_FACTOR);
-  retryTime = retryTime * 2;
-  if(retryTime >= MAX_RETRY_TIME) {
-    retryTime = MAX_RETRY_TIME;
-  }
-}
- 
 void loop() {
 }

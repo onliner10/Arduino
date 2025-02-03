@@ -1,20 +1,16 @@
-class Comm {
-public:
-    Comm() {
-        // Constructor code here
-    }
+void initComm() {
+    // Initialization code here
+    Serial.println("Initialized communications");
+}
 
-    ~Comm() {
-        // Destructor code here
-    }
+void sendComm(unsigned int usages, unsigned long last_used) {
+  Serial.print("Usages: ");
+  Serial.print(usages);
+  Serial.print(", Last used: ");
+  Serial.println(last_used);
+}
 
-    void init() {
-        // Initialization code here
-        Serial.println("Initialized communications");
-    }
-
-    void end() {
-        // Deinitialization code here
-        Serial.println("Deinitialized communications");
-    }
-};
+void endComm() {
+    // Deinitialization code here
+    Serial.println("Deinitialized communications");
+}
