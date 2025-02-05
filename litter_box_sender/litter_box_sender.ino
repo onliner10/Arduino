@@ -1,18 +1,18 @@
-#include <esp_now.h>
 #include <WiFi.h>
 #include <Preferences.h>
 #include "driver/rtc_io.h"
-
+#include "esp_sleep.h"
 
 #define uS_TO_S_FACTOR 1000000ULL /* Conversion factor for micro seconds to seconds */
 #define CONTACTRON GPIO_NUM_1
-#define TILT_SENSOR GPIO_NUM_2
+#define TILT_SENSOR GPIO_NUM_3
 #define DEBOUNCE_OPEN_SECONDS 5
 #define DEBOUNCE_ROTATE_SECONDS 5
+#define LED_BUILTIN GPIO_NUM_2
 
 Preferences preferences;
 unsigned int usages = 0;
-unsigned long last_open = 0;
+time_t last_open = 0;
 
 void setup() {
   setCpuFrequencyMhz(80);
@@ -87,7 +87,8 @@ void attach_interrupts() {
 
   const uint64_t wakeup_pins = (1ULL << CONTACTRON) | (1ULL << TILT_SENSOR);
 
-  esp_sleep_enable_ext1_wakeup(wakeup_pins, ESP_EXT1_WAKEUP_ANY_LOW);
+  //TODO: Fix me
+  //esp_sleep_enable_ext1_wakeup(wakeup_pins, ESP_EXT1_WAKEUP_ANY_LOW);
 }
 
 void handle_input() {

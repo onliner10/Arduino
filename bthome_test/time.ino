@@ -2,6 +2,7 @@
 #include "esp_sntp.h"
 #include <time.h>
 #include <sys/time.h>
+#include <WiFi.h>
 
 const char* ntpServer = "pool.ntp.org";
 

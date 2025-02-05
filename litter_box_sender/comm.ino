@@ -1,16 +1,25 @@
+#include <BTHome.h>
+
+#define DEVICE_NAME "Kuwetka"
+
+BTHome bthome;
+
 void initComm() {
-    // Initialization code here
+    bthome.begin(DEVICE_NAME, false, "", false);
     Serial.println("Initialized communications");
 }
 
-void sendComm(unsigned int usages, unsigned long last_used) {
-  Serial.print("Usages: ");
-  Serial.print(usages);
-  Serial.print(", Last open: ");
-  Serial.println(last_used);
+void sendComm(unsigned int usages, time_t last_opened) {
+  bthome.resetMeasurement();
+  
+  // TODO: Add battery voltage
+  bthome.addMeasurement(ID_COUNT, (uint64_t)usages);
+  bthome.addMeasurement(ID_TIMESTAMP,(uint64_t)last_opened);
+
+  bthome.sendPacket();
+  bthome.stop();
 }
 
 void endComm() {
     // Deinitialization code here
-    Serial.println("Deinitialized communications");
 }
