@@ -9,12 +9,11 @@ void initComm() {
     Serial.println("Initialized communications");
 }
 
-void sendComm(unsigned int usages, time_t last_opened) {
+void reportSensors(unsigned int usages) {
   bthome.resetMeasurement();
   
-  // TODO: Add battery voltage
+  // Add battery voltage
   bthome.addMeasurement(ID_COUNT, (uint64_t)usages);
-  bthome.addMeasurement(ID_TIMESTAMP,(uint64_t)last_opened);
 
   bthome.sendPacket();
   bthome.stop();

@@ -5,7 +5,6 @@
 
 #define uS_TO_S_FACTOR 1000000ULL /* Conversion factor for micro seconds to seconds */
 #define CONTACTRON GPIO_NUM_1
-#define TILT_SENSOR GPIO_NUM_3
 #define DEBOUNCE_OPEN_SECONDS 5
 #define DEBOUNCE_ROTATE_SECONDS 5
 #define LED_BUILTIN GPIO_NUM_2
@@ -15,9 +14,7 @@ unsigned int usages = 0;
 time_t last_open = 0;
 
 void setup() {
-  setCpuFrequencyMhz(80);
   pinMode(CONTACTRON, INPUT_PULLDOWN);
-  pinMode(TILT_SENSOR, INPUT_PULLDOWN);
   attach_interrupts();
 
   pinMode(LED_BUILTIN, OUTPUT);
@@ -65,7 +62,7 @@ void handler(){
     case ESP_SLEEP_WAKEUP_TIMER : handle_timer(); break;
     case ESP_SLEEP_WAKEUP_TOUCHPAD : critical_error("Did not expect TOUCHPAD wake up!"); break;
     case ESP_SLEEP_WAKEUP_ULP : critical_error("Did not expect ULP wake up!"); break;
-    default : initialize_time(); break;
+    default : Serial.println("Default wakeup, doing nothing"); break;
   }
 }
 
