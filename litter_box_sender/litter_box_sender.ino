@@ -1,137 +1,120 @@
-#include <WiFi.h>
-#include <Preferences.h>
-#include "driver/rtc_io.h"
-#include "esp_sleep.h"
+#include <nrf52840.h>
+#include "LSM6DS3.h"
+#include <BTHome.h>
 
-#define uS_TO_S_FACTOR 1000000ULL /* Conversion factor for micro seconds to seconds */
-#define CONTACTRON GPIO_NUM_1
-#define DEBOUNCE_OPEN_SECONDS 5
-#define DEBOUNCE_ROTATE_SECONDS 5
-#define LED_BUILTIN GPIO_NUM_2
+// #define PIN_LSM6DS3TR_C_INT1 (18)
 
-Preferences preferences;
-unsigned int usages = 0;
-time_t last_open = 0;
+#define CONTACTRON 1
+#define DEBOUNCE_OPEN_SECONDS 1200
+#define DEBOUNCE_ROTATE_SECONDS 600
+#define DEVICE_NAME "Kuwetka"
+
+BTHome bthome;
+LSM6DS3 lsm6ds3(I2C_MODE, 0x6A);    
+
+uint8_t readDataByte = 0;
 
 void setup() {
-  pinMode(CONTACTRON, INPUT_PULLDOWN);
-  attach_interrupts();
-
-  pinMode(LED_BUILTIN, OUTPUT);
-  preferences.begin("sender", false);
-
   // Init Serial Monitor
-  Serial.begin(115200);
+  Serial.begin(9600);
   blink_init();
   Serial.println("Starting sensor...");
+
+  inputPulldownSesnse(CONTACTRON);
+  int initError = lsm6ds3.begin();
+
+  inputPulldownSesnse(PIN_LSM6DS3TR_C_INT1);
+  lsm6ds3.readRegister(&readDataByte, LSM6DS3_ACC_GYRO_D6D_SRC); 
+
+  pinMode(LED_BUILTIN, OUTPUT);
+
   digitalWrite(LED_BUILTIN, 1);
-  debug_gpio();
- 
-  initComm();
+
+  if (initError != 0) {
+    Serial.println("Device error");
+  } 
+  if (0 != configure_angle()) {
+      Serial.println("Fail to configure!");
+  } 
+  delay(1000);
   handler();
-  endComm();
 
   Serial.println("Going to sleep now");
   digitalWrite(LED_BUILTIN, 0);
-  preferences.end();
 
-  Serial.flush();
-  esp_deep_sleep_start();
-}
-
-void debug_gpio() {
-  int state;
-  state = digitalRead(CONTACTRON);
-  Serial.print("Contractron: ");
-  Serial.print(state);
-  Serial.print(", ");
-  state = digitalRead(TILT_SENSOR);
-  Serial.print("Tilt: ");
-  Serial.println(state);
+  go_sleep();
 }
 
 void handler(){
-  esp_sleep_wakeup_cause_t wakeup_reason;
+  auto latchState = NRF_GPIO->LATCH;
+  reset_latch();
 
-  wakeup_reason = esp_sleep_get_wakeup_cause();
-
-  switch(wakeup_reason)
-  {
-    case ESP_SLEEP_WAKEUP_EXT0 : critical_error("Did not expect EXT0 wake up!"); break;
-    case ESP_SLEEP_WAKEUP_EXT1 : handle_input(); break;
-    case ESP_SLEEP_WAKEUP_TIMER : handle_timer(); break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD : critical_error("Did not expect TOUCHPAD wake up!"); break;
-    case ESP_SLEEP_WAKEUP_ULP : critical_error("Did not expect ULP wake up!"); break;
-    default : Serial.println("Default wakeup, doing nothing"); break;
-  }
-}
-
-// Attach interrupts back after debounce period
-void handle_timer() {
-  Serial.println("TIMER HANDLER");
-  attach_interrupts();
-
-  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-  Serial.flush();
-  esp_deep_sleep_start();
-}
-
-void attach_interrupts() {
-  rtc_gpio_pullup_dis(CONTACTRON);
-  rtc_gpio_pulldown_en(CONTACTRON);
-  rtc_gpio_pullup_dis(TILT_SENSOR);
-  rtc_gpio_pulldown_en(TILT_SENSOR);
-
-  const uint64_t wakeup_pins = (1ULL << CONTACTRON) | (1ULL << TILT_SENSOR);
-
-  //TODO: Fix me
-  //esp_sleep_enable_ext1_wakeup(wakeup_pins, ESP_EXT1_WAKEUP_ANY_LOW);
-}
-
-void handle_input() {
-  auto debounce = 1;
   Serial.println("INPUT HANDLER");
-  gpio_wait();
+  Serial.print("Latch");
+  Serial.println(latchState);
+  auto debounce = DEBOUNCE_OPEN_SECONDS; // 5 min
+  
+  bthome.begin(DEVICE_NAME, "", false);
+  bthome.resetMeasurement();
 
-  usages = preferences.getUInt("usages", 0);
-  if(usages != 0 && digitalRead(CONTACTRON) == 0) {
+  if(latchState & 8) {
     debounce = DEBOUNCE_OPEN_SECONDS;
-    last_open = getTime();
-    preferences.putULong("last_open", last_open);
-    usages = 0;
-  } else if(digitalRead(TILT_SENSOR) == 0) {
+    Serial.println("Open detected");
+    bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_PRESS);
+    bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_NONE);
+  } else if(latchState & 2048) {
     debounce = DEBOUNCE_ROTATE_SECONDS;
-    usages += 1;
+
+    Serial.println("Rotation detected");
+    bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_NONE);
+    bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_PRESS);
   }
+  
+  bthome.sendPacket();
+  delay(10000);
+  bthome.stop();
 
-  preferences.putUInt("usages", usages);
-
-  send_data();
-  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT1);
-
-  // 5 minute debounce
-  esp_sleep_enable_timer_wakeup(debounce * uS_TO_S_FACTOR);
+  // debounce
+  Serial.print("Debouncing for ");
+  Serial.print(debounce);
+  Serial.println(" seconds");
+  delay(debounce * 1000);
+  go_sleep();
 }
 
-void send_data() {
-  usages = preferences.getUInt("usages", 0);
-  last_open = preferences.getULong("last_open", 0);
-  sendComm(usages, last_open);
-   
-  blink_sent();
+void reset_latch() {
+
+  //Reset the latch before sleep
+  lsm6ds3.readRegister(&readDataByte, LSM6DS3_ACC_GYRO_D6D_SRC); 
+
+  NRF_GPIO->LATCH = NRF_GPIO->LATCH;  
+  (void)NRF_TIMER0->EVENTS_COMPARE[0]; 
 }
 
-// waits for either contactron or tilt sensor to have state zero
-void gpio_wait() {
-  unsigned long startTime = millis();  
+void go_sleep() {
+  Serial.flush();
 
-  while (millis() - startTime < 2000) {
-    if (digitalRead(CONTACTRON) == 0 || digitalRead(TILT_SENSOR) == 0) {
-      break;  
-    }
-  }
-
+  NRF_POWER->SYSTEMOFF = 1;
 }
+
+int configure_angle(void) {
+    uint8_t error = 0;
+    uint8_t dataToWrite = 0;
+
+    dataToWrite |= LSM6DS3_ACC_GYRO_BW_XL_50Hz;
+    dataToWrite |= LSM6DS3_ACC_GYRO_FS_XL_2g;
+    dataToWrite |= LSM6DS3_ACC_GYRO_ODR_XL_13Hz;
+
+    error += lsm6ds3.writeRegister(LSM6DS3_ACC_GYRO_CTRL1_XL, dataToWrite);
+    
+    error += lsm6ds3.writeRegister(LSM6DS3_ACC_GYRO_TAP_CFG1, 0x81);
+    error += lsm6ds3.writeRegister(LSM6DS3_ACC_GYRO_TAP_THS_6D, 0xc0); // c0 11000000 d4d enable, 60 degrees
+    error += lsm6ds3.writeRegister(LSM6DS3_ACC_GYRO_CTRL8_XL, 0x01); // low pass
+    error += lsm6ds3.writeRegister(LSM6DS3_ACC_GYRO_MD1_CFG, 0x04);
+
+    return error;
+}
+
 
 void loop() {
 }

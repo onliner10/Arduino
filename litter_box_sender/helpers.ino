@@ -1,4 +1,3 @@
-#define LED_BUILTIN 15
 
 void(* resetFunc) (void) = 0;
 
@@ -28,4 +27,21 @@ void critical_error(const char* msg) {
 
 void blink_sent() {
   blinker(100, 10);
+}
+
+
+void inputPulldownSesnse( uint32_t ulPin )
+{
+
+  ulPin = g_ADigitalPinMap[ulPin];
+
+  NRF_GPIO_Type * port = nrf_gpio_pin_port_decode(&ulPin);
+
+  // Set pin to input mode with pull-down resistor enabled and sense when High
+  port->PIN_CNF[ulPin] = ((uint32_t)GPIO_PIN_CNF_DIR_Input        << GPIO_PIN_CNF_DIR_Pos)
+                        | ((uint32_t)GPIO_PIN_CNF_INPUT_Connect    << GPIO_PIN_CNF_INPUT_Pos)
+                        | ((uint32_t)GPIO_PIN_CNF_PULL_Pulldown    << GPIO_PIN_CNF_PULL_Pos)
+                        | ((uint32_t)GPIO_PIN_CNF_DRIVE_S0S1       << GPIO_PIN_CNF_DRIVE_Pos)
+                        | ((uint32_t)GPIO_PIN_CNF_SENSE_High       << GPIO_PIN_CNF_SENSE_Pos);
+
 }
