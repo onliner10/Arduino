@@ -1,4 +1,5 @@
 
+void(* resetFunc) (void) = 0;
 
 void blinker(unsigned int interval, unsigned int n) {
   for(int i = 0;i<n;i++) {
@@ -18,6 +19,12 @@ void blink_init() {
 void error(const char* msg) {
   Serial.println(msg);
   blinker(500, 3);
+}
+
+void critical_error(const char* msg) {
+  Serial.println(msg);
+  blinker(1000, 5);
+  resetFunc();
 }
 
 void blink_sent() {
